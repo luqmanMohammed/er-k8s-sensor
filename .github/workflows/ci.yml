@@ -4,24 +4,16 @@ on:
     branches: [develop, main]
 
 env:
-  go_version: "1.20"
+  go_version: "1.23"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.go_version }}
-      - uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+          go-version-file: go.mod
       - name: Build
         run: go build -v .
 
@@ -29,15 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       latest: ${{ steps.latest.outputs.LATEST_ENV }}
-      sec_latest: ${{ steps.sec-latest.outputs.SEC_LATEST_ENV }}
-      thr_latest: ${{ steps.thr-latest.outputs.THR_LATEST_ENV }}
     steps:
       - run: export LATEST=$(curl https://api.github.com/repos/k3s-io/k3s/releases/latest | jq -r '.name'); echo "LATEST_ENV=$( echo $LATEST | sed "s/+/-/")" >> $GITHUB_OUTPUT
         id: latest
-      - run: export SEC_LATEST=$(echo "${{ steps.latest.outputs.LATEST_ENV }}" | awk -F. '{print $1"."$2-1".1-k3s1"}'); echo "SEC_LATEST_ENV=$SEC_LATEST" >> $GITHUB_OUTPUT
-        id: sec-latest
-      - run: export THR_LATEST=$(echo "${{ steps.latest.outputs.LATEST_ENV }}" | awk -F. '{print $1"."$2-2".1-k3s1"}'); echo "THR_LATEST_ENV=$THR_LATEST" >> $GITHUB_OUTPUT
-        id: thr-latest
 
   unit-tests:
     runs-on: ubuntu-latest
@@ -48,22 +34,12 @@ jobs:
       matrix:
         k3s_k8s_image:
           - ${{ needs.prepare-test-envs.outputs.latest }}
-          - ${{ needs.prepare-test-envs.outputs.sec_latest }}
-          - ${{ needs.prepare-test-envs.outputs.thr_latest }}
       fail-fast: false
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.go_version }}
-      - uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+          go-version-file: go.mod
       - name: Create Simple K8s Cluster
         uses: AbsaOSS/k3d-action@v2
         with:
@@ -84,43 +60,30 @@ jobs:
     permissions:
       security-events: read
       contents: read
+    needs:
+      - prepare-test-envs
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build Docker Image
         run: DOCKER_BUILDKIT=1 docker build -f Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/eventsrunner-k8s-sensor:${{ github.sha }} .
-      - name: Prepare Trivy Ignore
-        run: |
-            curl \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/code-scanning/alerts?state=dismissed&per_page=100" | \
-            jq -r '.[] | .rule.id ' > .trivyignore
       - name: Scan Docker Image using Trivy
         uses: aquasecurity/trivy-action@master
         with:
-          scan-type: 'image'
+          scan-type: "image"
           image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/eventsrunner-k8s-sensor:${{ github.sha }}
           exit-code: 1
-          severity: 'MEDIUM,HIGH,CRITICAL'
+          severity: "MEDIUM,HIGH,CRITICAL"
       - name: Create K8s Cluster
         uses: AbsaOSS/k3d-action@v2
         with:
           cluster-name: cluster
           args: >-
-            --image='rancher/k3s:v1.23.4-k3s1'
+            --image='rancher/k3s:${{ needs.prepare-test-envs.outputs.latest }}'
             --agents=1
       - name: Upload Docker Image to K8s Cluster
         run: k3d image import -c cluster ${{ secrets.DOCKERHUB_USERNAME }}/eventsrunner-k8s-sensor:${{ github.sha }}
-      - uses: actions/setup-go@v2
+      - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.go_version }}
-      - uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+          go-version-file: go.mod
       - name: Run Integration Tests
-        run: IMAGE_TAG=${{ github.sha }} INT_TEST="true" go test -v ./integration-tests/... 
+        run: IMAGE_TAG=${{ github.sha }} INT_TEST="true" go test -v ./integration-tests/...
