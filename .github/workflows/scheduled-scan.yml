@@ -5,6 +5,7 @@ on:
       - main
   schedule:
     - cron: 5 01 */2 * *
+  workflow_dispatch:
 
 permissions:
   security-events: write

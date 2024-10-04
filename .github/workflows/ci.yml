@@ -40,12 +40,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Create Simple K8s Cluster
-        uses: AbsaOSS/k3d-action@v2
-        with:
-          cluster-name: cluster
-          args: >-
-            --image=rancher/k3s:${{ matrix.k3s_k8s_image }}
+      - run: curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+      - run: k3d cluster create --name cluster --agents 1 --image "${{ matrix.k3s_k8s_image }}"
       - name: Run tests
         run: go test -v ./... -coverprofile coverage.out
       - name: Codecov
@@ -73,13 +69,8 @@ jobs:
           image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/eventsrunner-k8s-sensor:${{ github.sha }}
           exit-code: 1
           severity: "MEDIUM,HIGH,CRITICAL"
-      - name: Create K8s Cluster
-        uses: AbsaOSS/k3d-action@v2
-        with:
-          cluster-name: cluster
-          args: >-
-            --image='rancher/k3s:${{ needs.prepare-test-envs.outputs.latest }}'
-            --agents=1
+      - run: curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+      - run: k3d cluster create --name cluster --agents 1 --image "${{ matrix.k3s_k8s_image }}"
       - name: Upload Docker Image to K8s Cluster
         run: k3d image import -c cluster ${{ secrets.DOCKERHUB_USERNAME }}/eventsrunner-k8s-sensor:${{ github.sha }}
       - uses: actions/setup-go@v5
