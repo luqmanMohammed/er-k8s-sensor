@@ -41,7 +41,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-      - run: k3d cluster create --name cluster --agents 1 --image "${{ matrix.k3s_k8s_image }}"
+      - run: k3d cluster create cluster --agents 1 --image "${{ matrix.k3s_k8s_image }}"
       - name: Run tests
         run: go test -v ./... -coverprofile coverage.out
       - name: Codecov
@@ -70,7 +70,7 @@ jobs:
           exit-code: 1
           severity: "MEDIUM,HIGH,CRITICAL"
       - run: curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-      - run: k3d cluster create --name cluster --agents 1 --image "${{ matrix.k3s_k8s_image }}"
+      - run: k3d cluster create cluster --agents 1 --image "${{ matrix.k3s_k8s_image }}"
       - name: Upload Docker Image to K8s Cluster
         run: k3d image import -c cluster ${{ secrets.DOCKERHUB_USERNAME }}/eventsrunner-k8s-sensor:${{ github.sha }}
       - uses: actions/setup-go@v5
